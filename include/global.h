@@ -21,6 +21,7 @@
 #define GLOBAL_H_
 	
 	#include <stdio.h>
+	#include <semaphore.h>
 	
 	/* Forward definitions */
 	extern void lzw(FILE *, FILE *, int);

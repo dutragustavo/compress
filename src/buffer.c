@@ -31,6 +31,8 @@ struct buffer
 	unsigned size;  /* Max size (in elements).      */
 	unsigned first; /* First element in the buffer. */
 	unsigned last;  /* Last element in the buffer.  */
+	pthread_mutex_t *mutex_first;
+	pthread_mutex_t *mutex_last;
 };
 
 /*
@@ -51,6 +53,9 @@ struct buffer *buffer_create(unsigned size)
 	buf->first = 0;
 	buf->last = 0;
 
+	pthread_mutex_init(buf->mutex_first, NULL);
+	pthread_mutex_init(buf->mutex_last, NULL);
+
 	return (buf);
 }
 
@@ -65,6 +70,9 @@ void buffer_destroy(struct buffer *buf)
 	/* House keeping. */
 	free(buf->data);
 	free(buf);
+
+	pthread_mutex_destroy(buf->mutex_first);
+	pthread_mutex_destroy(buf->mutex_last);
 }
 
 /*
@@ -76,13 +84,16 @@ void buffer_put(struct buffer *buf, unsigned item)
 	assert(buf != NULL);
 
 	/* Expand buffer. */
+	pthread_mutex_lock(buf->mutex_last);
+
 	if (buf->last == buf->size)
 	{
 		buf->data = srealloc(buf->data, 2*buf->size*sizeof(unsigned));
 		buf->size *= 2;
 	}
-
 	buf->data[buf->last++] = item;
+
+	pthread_mutex_unlock(buf->mutex_last);
 }
 
 /*
@@ -95,7 +106,9 @@ unsigned buffer_get(struct buffer *buf)
 	/* Sanity check. */
 	assert(buf != NULL);
 	
+	pthread_mutex_lock(buf->mutex_first);
 	item = buf->data[buf->first++];
+	pthread_mutex_unlock(buf->mutex_last);
 
 	return (item);
 }
