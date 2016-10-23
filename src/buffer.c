@@ -53,6 +53,9 @@ struct buffer *buffer_create(unsigned size)
 	buf->first = 0;
 	buf->last = 0;
 
+	buf->mutex_first = smalloc(sizeof(pthread_mutex_t));
+	buf->mutex_last = smalloc(sizeof(pthread_mutex_t));
+
 	pthread_mutex_init(buf->mutex_first, NULL);
 	pthread_mutex_init(buf->mutex_last, NULL);
 
@@ -69,10 +72,14 @@ void buffer_destroy(struct buffer *buf)
 	
 	/* House keeping. */
 	free(buf->data);
-	free(buf);
 
 	pthread_mutex_destroy(buf->mutex_first);
 	pthread_mutex_destroy(buf->mutex_last);
+
+	free(buf->mutex_first);
+	free(buf->mutex_last);
+
+	free(buf);
 }
 
 /*
@@ -108,7 +115,7 @@ unsigned buffer_get(struct buffer *buf)
 	
 	pthread_mutex_lock(buf->mutex_first);
 	item = buf->data[buf->first++];
-	pthread_mutex_unlock(buf->mutex_last);
+	pthread_mutex_unlock(buf->mutex_first);
 
 	return (item);
 }
