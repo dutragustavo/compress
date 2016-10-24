@@ -31,8 +31,8 @@ struct buffer
 	unsigned size;  /* Max size (in elements).      */
 	unsigned first; /* First element in the buffer. */
 	unsigned last;  /* Last element in the buffer.  */
-	pthread_mutex_t *mutex_first;
-	pthread_mutex_t *mutex_last;
+	pthread_mutex_t mutex_first;
+	pthread_mutex_t mutex_last;
 };
 
 /*
@@ -53,11 +53,8 @@ struct buffer *buffer_create(unsigned size)
 	buf->first = 0;
 	buf->last = 0;
 
-	buf->mutex_first = smalloc(sizeof(pthread_mutex_t));
-	buf->mutex_last = smalloc(sizeof(pthread_mutex_t));
-
-	pthread_mutex_init(buf->mutex_first, NULL);
-	pthread_mutex_init(buf->mutex_last, NULL);
+	pthread_mutex_init(&buf->mutex_first, NULL);
+	pthread_mutex_init(&buf->mutex_last, NULL);
 
 	return (buf);
 }
@@ -73,11 +70,8 @@ void buffer_destroy(struct buffer *buf)
 	/* House keeping. */
 	free(buf->data);
 
-	pthread_mutex_destroy(buf->mutex_first);
-	pthread_mutex_destroy(buf->mutex_last);
-
-	free(buf->mutex_first);
-	free(buf->mutex_last);
+	pthread_mutex_destroy(&buf->mutex_first);
+	pthread_mutex_destroy(&buf->mutex_last);
 
 	free(buf);
 }
@@ -91,7 +85,7 @@ void buffer_put(struct buffer *buf, unsigned item)
 	assert(buf != NULL);
 
 	/* Expand buffer. */
-	pthread_mutex_lock(buf->mutex_last);
+	pthread_mutex_lock(&buf->mutex_last);
 
 	if (buf->last == buf->size)
 	{
@@ -100,7 +94,7 @@ void buffer_put(struct buffer *buf, unsigned item)
 	}
 	buf->data[buf->last++] = item;
 
-	pthread_mutex_unlock(buf->mutex_last);
+	pthread_mutex_unlock(&buf->mutex_last);
 }
 
 /*
@@ -113,9 +107,9 @@ unsigned buffer_get(struct buffer *buf)
 	/* Sanity check. */
 	assert(buf != NULL);
 	
-	pthread_mutex_lock(buf->mutex_first);
+	pthread_mutex_lock(&buf->mutex_first);
 	item = buf->data[buf->first++];
-	pthread_mutex_unlock(buf->mutex_first);
+	pthread_mutex_unlock(&buf->mutex_first);
 
 	return (item);
 }
