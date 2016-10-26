@@ -56,7 +56,7 @@ static void* lzw_writebits(void* arg)
 	 * Read data from input buffer
 	 * and write to output file.
 	 */
-	while ((bits = buffer_get(inbuf)) != EOF)
+	while ((bits = buffer_get(outbuf)) != EOF)
 	{	
 		buf  = buf << WIDTH;
 		buf |= bits & ((1 << WIDTH) - 1);
@@ -107,12 +107,12 @@ static void* lzw_readbits(void* arg)
 		/* Flush bytes. */
 		while (n >= WIDTH)
 		{
-			buffer_put(outbuf, (buf >> (n - WIDTH)) & ((1 << WIDTH) - 1));
+			buffer_put(inbuf, (buf >> (n - WIDTH)) & ((1 << WIDTH) - 1));
 			n -= WIDTH;
 		}
 	}
 			
-	buffer_put(outbuf, EOF);
+	buffer_put(inbuf, EOF);
 	return NULL;
 }
 
@@ -131,9 +131,9 @@ static void* lzw_readbytes(void * arg)
 
 	/* Read data from file to the buffer. */
 	while ((ch = fgetc(infile)) != EOF)
-		buffer_put(outbuf, ch & 0xff);
+		buffer_put(inbuf, ch & 0xff);
 	
-	buffer_put(outbuf, EOF);
+	buffer_put(inbuf, EOF);
 	return NULL;
 }
 
@@ -150,7 +150,7 @@ static void* lzw_writebytes(void* arg)
 	FILE* outfile = (FILE *) arg;
 
 	/* Read data from file to the buffer. */
-	while ((ch = buffer_get(inbuf)) != EOF)
+	while ((ch = buffer_get(outbuf)) != EOF)
 		fputc(ch, outfile);
 
 	return NULL;
