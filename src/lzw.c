@@ -23,12 +23,16 @@
 #include <stdio.h>
 #include <string.h>
 #include <util.h>
+#include <pthread.h>
 
 /* 
  * Parameters.
  */
 #define RADIX 256 /* Radix of input data. */
 #define WIDTH  12 /* Width of code word.  */
+
+buffer_t inbuf;  /* Input buffer.  */
+buffer_t outbuf; /* Output buffer. */
 
 /*============================================================================*
  *                           Bit Buffer Reader/Writer                         *
@@ -37,7 +41,7 @@
 /*
  * Writes data to a file.
  */
-static void lzw_writebits(buffer_t in, FILE *out)
+static void* lzw_writebits(void* arg)
 {
 	int bits;   /* Working bits. */
 	unsigned n; /* Current bit.  */
@@ -46,11 +50,13 @@ static void lzw_writebits(buffer_t in, FILE *out)
 	n = 0;
 	buf = 0;
 	
+	FILE *out = (FILE *)arg;
+
 	/*
 	 * Read data from input buffer
 	 * and write to output file.
 	 */
-	while ((bits = buffer_get(in)) != EOF)
+	while ((bits = buffer_get(inbuf)) != EOF)
 	{	
 		buf  = buf << WIDTH;
 		buf |= bits & ((1 << WIDTH) - 1);
@@ -66,6 +72,8 @@ static void lzw_writebits(buffer_t in, FILE *out)
 	
 	if (n > 0)
 		fputc((buf << (8 - n)) & 0xff, out);
+
+	return NULL;
 }
 
 /*============================================================================*
@@ -75,7 +83,7 @@ static void lzw_writebits(buffer_t in, FILE *out)
 /*
  * Reads data from a file.
  */
-static void lzw_readbits(FILE *in, buffer_t out)
+static void* lzw_readbits(void* arg)
 {
 	int bits;   /* Working bits. */
 	unsigned n; /* Current bit.  */
@@ -83,6 +91,8 @@ static void lzw_readbits(FILE *in, buffer_t out)
 	
 	n = 0;
 	buf = 0;
+
+	FILE *in = (FILE *)arg;
 	
 	/*
 	 * Read data from input file
@@ -97,12 +107,13 @@ static void lzw_readbits(FILE *in, buffer_t out)
 		/* Flush bytes. */
 		while (n >= WIDTH)
 		{
-			buffer_put(out, (buf >> (n - WIDTH)) & ((1 << WIDTH) - 1));
+			buffer_put(outbuf, (buf >> (n - WIDTH)) & ((1 << WIDTH) - 1));
 			n -= WIDTH;
 		}
 	}
 			
-	buffer_put(out, EOF);
+	buffer_put(outbuf, EOF);
+	return NULL;
 }
 
 /*============================================================================*
@@ -112,15 +123,18 @@ static void lzw_readbits(FILE *in, buffer_t out)
 /*
  * Reads data from a file.
  */
-static void lzw_readbytes(FILE *infile, buffer_t outbuf)
+static void* lzw_readbytes(void * arg)
 {
 	int ch;
+
+	FILE *infile = (FILE *) arg;
 
 	/* Read data from file to the buffer. */
 	while ((ch = fgetc(infile)) != EOF)
 		buffer_put(outbuf, ch & 0xff);
 	
 	buffer_put(outbuf, EOF);
+	return NULL;
 }
 
 /*============================================================================*
@@ -130,13 +144,16 @@ static void lzw_readbytes(FILE *infile, buffer_t outbuf)
 /*
  * Writes data to a file.
  */
-static void lzw_writebytes(buffer_t inbuf, FILE *outfile)
+static void* lzw_writebytes(void* arg)
 {
 	int ch;
-	
+	FILE* outfile = (FILE *) arg;
+
 	/* Read data from file to the buffer. */
 	while ((ch = buffer_get(inbuf)) != EOF)
 		fputc(ch, outfile);
+
+	return NULL;
 }
 
 /*============================================================================*
@@ -157,7 +174,7 @@ static code_t lzw_init(dictionary_t dict, int radix)
 /*
  * Compress data.
  */
-static void lzw_compress(buffer_t in, buffer_t out)
+static void* lzw_compress(void* arg)
 {	
 	unsigned ch;       /* Working character. */
 	int i, ni;         /* Working entries.   */
@@ -170,7 +187,7 @@ static void lzw_compress(buffer_t in, buffer_t out)
 	code = lzw_init(dict, RADIX);
 
 	/* Compress data. */
-	ch = buffer_get(in);
+	ch = buffer_get(inbuf);
 	while (ch != EOF)
 	{	
 		ni = dictionary_find(dict, i, (char)ch);
@@ -178,7 +195,7 @@ static void lzw_compress(buffer_t in, buffer_t out)
 		/* Find longest prefix. */
 		if (ni >= 0)
 		{			
-			ch = buffer_get(in);
+			ch = buffer_get(inbuf);
 			i = ni;
 		
 			/* Next character. */
@@ -186,14 +203,14 @@ static void lzw_compress(buffer_t in, buffer_t out)
 				continue;
 		}
 		
-		buffer_put(out, dict->entries[i].code);
+		buffer_put(outbuf, dict->entries[i].code);
 		
 		if (code == ((1 << WIDTH) - 1))
 		{	
 			i = 0;
 			dictionary_reset(dict);
 			code = lzw_init(dict, RADIX);
-			buffer_put(out, RADIX);
+			buffer_put(outbuf, RADIX);
 			continue;
 		}
 		
@@ -201,9 +218,10 @@ static void lzw_compress(buffer_t in, buffer_t out)
 		i = 0;
 	}
 	
-	buffer_put(out, EOF);
+	buffer_put(outbuf, EOF);
 
 	dictionary_destroy(dict);
+	return NULL;
 }
 
 /*
@@ -227,7 +245,7 @@ static char *buildstr(char *base, char ch)
 /*
  * Decompress data.
  */
-static void lzw_decompress(buffer_t in, buffer_t out)
+static void* lzw_decompress(void* arg)
 {
 	char *s, *p;   /* Working string. */
 	unsigned code; /* Working code.   */
@@ -242,7 +260,7 @@ static void lzw_decompress(buffer_t in, buffer_t out)
 	
 	st[i++] =  buildstr("", ' ');
 	
-	code = buffer_get(in);
+	code = buffer_get(inbuf);
 	
 	/* Broken file. */
 	if (code >= i)
@@ -255,9 +273,9 @@ static void lzw_decompress(buffer_t in, buffer_t out)
 	{
 		/* Output current string. */
 		for (p = s; *p != '\0'; p++)
-			buffer_put(out, (unsigned)(*p & 0xff));
+			buffer_put(outbuf, (unsigned)(*p & 0xff));
 		
-		code = buffer_get(in);
+		code = buffer_get(inbuf);
 		
 		/* End of input. */
 		if (code == EOF)
@@ -275,7 +293,7 @@ static void lzw_decompress(buffer_t in, buffer_t out)
 			
 			st[i++] =  buildstr("", ' ');
 			
-			code = buffer_get(in);
+			code = buffer_get(inbuf);
 	
 			/* Broken file. */
 			if (code >= i)
@@ -300,12 +318,14 @@ static void lzw_decompress(buffer_t in, buffer_t out)
 		s = p;
 	}
 	
-	buffer_put(out, EOF);
+	buffer_put(outbuf, EOF);
 	
 	/* House keeping. */
 	while (i > 0)
 		free(st[--i]);
 	free(st);
+
+	return NULL;
 }
 
 /*
@@ -313,28 +333,33 @@ static void lzw_decompress(buffer_t in, buffer_t out)
  */
 void lzw(FILE *input, FILE *output, int compress)
 {
-	buffer_t inbuf;  /* Input buffer.  */
-	buffer_t outbuf; /* Output buffer. */
+	inbuf = buffer_create(5096);
+	outbuf = buffer_create(5096);
 
-	inbuf = buffer_create(1024);
-	outbuf = buffer_create(1024);
+	pthread_t reader;
+	pthread_t worker;
+	pthread_t writer;
 
 	/* Compress mode. */
 	if (compress)
 	{
-		lzw_readbytes(input, inbuf);
-		lzw_compress(inbuf, outbuf);
-		lzw_writebits(outbuf, output);
+		pthread_create(&reader, NULL, lzw_readbytes, (void *)input);
+		pthread_create(&worker, NULL, lzw_compress, NULL);
+		pthread_create(&writer, NULL, lzw_writebits, (void *)output);
 	}
 	
 	/* Decompress mode. */
 	else
 	{	
-		lzw_readbits(input, inbuf);
-		lzw_decompress(inbuf, outbuf);
-		lzw_writebytes(outbuf, output);
+		pthread_create(&reader, NULL, lzw_readbits, (void *)input);
+		pthread_create(&worker, NULL, lzw_decompress, NULL);
+		pthread_create(&writer, NULL, lzw_writebytes, (void *)output);
 	}
 	
+	pthread_join(reader, NULL);
+	pthread_join(worker, NULL);
+	pthread_join(writer, NULL);
+
 	buffer_destroy(outbuf);
 	buffer_destroy(inbuf);
 }
