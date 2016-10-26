@@ -27,8 +27,14 @@
 
 	/* Forward definitions. */
 	extern void buffer_destroy(buffer_t);
+    /**
+     * block if buffer is empty
+     * */
 	extern unsigned buffer_get(buffer_t);
 	extern buffer_t buffer_create(unsigned);
+    /**
+     * block if buffer is full
+     * */
 	extern void buffer_put(buffer_t, unsigned);
 
 #endif /* BUFFER_H_ */

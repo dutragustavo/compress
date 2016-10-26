@@ -32,8 +32,8 @@ struct buffer
 	unsigned size;  /* Max size (in elements).      */
 	unsigned first; /* First element in the buffer. */
 	unsigned last;  /* Last element in the buffer.  */
-	pthread_mutex_t mutex_first;
-	pthread_mutex_t mutex_last;
+	pthread_mutex_t mutex_read;
+	pthread_mutex_t mutex_write;
 	sem_t sem_write;
 	sem_t sem_read;
 };
@@ -56,8 +56,8 @@ struct buffer *buffer_create(unsigned size)
 	buf->first = 0;
 	buf->last = 0;
 
-	pthread_mutex_init(&buf->mutex_first, NULL);
-	pthread_mutex_init(&buf->mutex_last, NULL);
+	pthread_mutex_init(&buf->mutex_read, NULL);
+	pthread_mutex_init(&buf->mutex_write, NULL);
 
 	sem_init(&buf->sem_read, 0, 0);
 	sem_init(&buf->sem_write, 0, size);
@@ -76,8 +76,8 @@ void buffer_destroy(struct buffer *buf)
 	/* House keeping. */
 	free(buf->data);
 
-	pthread_mutex_destroy(&buf->mutex_first);
-	pthread_mutex_destroy(&buf->mutex_last);
+	pthread_mutex_destroy(&buf->mutex_read);
+	pthread_mutex_destroy(&buf->mutex_write);
 
 	sem_destroy(&buf->sem_write);
 	sem_destroy(&buf->sem_read);
@@ -93,19 +93,20 @@ void buffer_put(struct buffer *buf, unsigned item)
 	/* Sanity check. */
 	assert(buf != NULL);
 
-	/* Expand buffer. */
-
+	/*Init synchronize region */
 	sem_wait(&buf->sem_write);
-	pthread_mutex_lock(&buf->mutex_last);
 
-	if (buf->last == buf->size)
-	{
-		buf->data = srealloc(buf->data, 2*buf->size*sizeof(unsigned));
-		buf->size *= 2;
-	}
-	buf->data[buf->last++] = item;
+	/*Init critic region */
+	pthread_mutex_lock(&buf->mutex_write);
 
-	pthread_mutex_unlock(&buf->mutex_last);
+    buf->data[buf->last++] = item;
+    buf->last %= buf->size;
+	sem_post(&buf->sem_read);
+
+	/*End critic region */
+	pthread_mutex_unlock(&buf->mutex_write);
+
+	/*End synchronize region */
 	sem_post(&buf->sem_write);
 }
 
@@ -115,15 +116,23 @@ void buffer_put(struct buffer *buf, unsigned item)
 unsigned buffer_get(struct buffer *buf)
 {
 	unsigned item;
-	
+
 	/* Sanity check. */
 	assert(buf != NULL);
-	
+
+	/*Init synchronize region */
 	sem_wait(&buf->sem_read);
-	pthread_mutex_lock(&buf->mutex_first);
-	item = buf->data[buf->first++];
-	pthread_mutex_unlock(&buf->mutex_first);
+
+	/*Init critic region */
+	pthread_mutex_lock(&buf->mutex_read);
+
+    item = buf->data[buf->first++];
+    buf->first %= buf->size;
 	sem_post(&buf->sem_write);
 
+	/*End critic region */
+	pthread_mutex_unlock(&buf->mutex_read);
+
 	return (item);
+    /*End synchronize region */
 }
