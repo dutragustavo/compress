@@ -4,9 +4,6 @@
 #include <assert.h>
 #include <pthread.h>
 
-
-#define FILE_WRITTER__BUFFER_SIZE 1024
-
 struct file_writter
 {
     buffer_t buffer;

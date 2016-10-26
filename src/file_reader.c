@@ -4,8 +4,6 @@
 #include <pthread.h>
 #include <assert.h>
 
-#define FILE_READER_BUFFER_SIZE 1024
-
 struct file_reader
 {
     buffer_t buffer;
