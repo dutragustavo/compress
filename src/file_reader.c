@@ -48,7 +48,7 @@ static void * buffer_worker( void * arg )
 	/* Read data from file to the buffer. */
 	while( ( ch = fgetc( reader->file ) ) != EOF )
     {
-		buffer_put( reader->buffer, ch & 0xff);
+		buffer_put( reader->buffer, ch );
     }
 
 	buffer_put( reader->buffer, EOF );
