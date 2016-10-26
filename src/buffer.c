@@ -48,11 +48,11 @@ struct buffer *buffer_create(unsigned size)
 	/* Sanity check. */
 	assert(size > 0);
 
-	buf = smalloc(size*sizeof(struct buffer));
+	buf = smalloc( sizeof( struct buffer ) );
 	
 	/* Initialize buffer. */
 	buf->size = size;
-	buf->data = smalloc(size*sizeof(unsigned));
+	buf->data = smalloc( size * sizeof ( unsigned ) );
 	buf->first = 0;
 	buf->last = 0;
 
@@ -92,6 +92,7 @@ void buffer_put(struct buffer *buf, unsigned item)
 {
 	/* Sanity check. */
 	assert(buf != NULL);
+	assert( buf->last < buf->size );
 
 	/*Init synchronize region */
 	sem_wait(&buf->sem_write);
@@ -118,6 +119,7 @@ unsigned buffer_get(struct buffer *buf)
 
 	/* Sanity check. */
 	assert(buf != NULL);
+	assert( buf->first < buf->size );
 
 	/*Init synchronize region */
 	sem_wait(&buf->sem_read);
