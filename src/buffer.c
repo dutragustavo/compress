@@ -107,7 +107,6 @@ void buffer_put(struct buffer *buf, unsigned item)
 	pthread_mutex_unlock(&buf->mutex_write);
 
 	/*End synchronize region */
-	sem_post(&buf->sem_write);
 }
 
 /*
